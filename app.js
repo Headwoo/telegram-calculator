@@ -1,20 +1,17 @@
 import {
   MAX_MONEY_CENTS, MAX_YEARS, MIN_RETURN, MAX_RETURN,
   MIN_INVESTMENT_BASIS_POINTS, MAX_INVESTMENT_BASIS_POINTS, SAVINGS_BASIS_POINTS,
-  isMoney, parseMoney, isInvestmentRate, parseInvestmentRate, isAnnualReturn, isHorizon,
+  parseMoney, parseInvestmentRate, isAnnualReturn, isHorizon,
   compoundProjection, paycheckSplit
 } from "./finance.mjs";
+import { CATEGORY_COLORS, MAX_CATEGORIES, MAX_CATEGORY_NAME, validCategoryName } from "./settings.mjs";
+import { createSettingsStore } from "./storage.mjs";
 
 const root = document.documentElement;
 const byId = id => document.getElementById(id);
-const storageKey = "balance.settings.v1";
-const categories = [
-  { id: "housing", label: "Housing", color: "blue", icon: "house", initial: 165_000 },
-  { id: "groceries", label: "Groceries", color: "teal", icon: "basket", initial: 56_000 },
-  { id: "transport", label: "Transport", color: "violet", icon: "car", initial: 42_000 },
-  { id: "bills", label: "Bills", color: "amber", icon: "receipt", initial: 37_000 },
-  { id: "lifestyle", label: "Lifestyle", color: "pink", icon: "coffee", initial: 45_000 }
-];
+const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+})[character]);
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
@@ -39,42 +36,45 @@ function projectionMoney(dollars, axis = false) {
   return (dollars <= -.005 ? "−" : "") + "$" + formatter.format(magnitude);
 }
 
-function loadSettings() {
-  try {
-    return JSON.parse(localStorage.getItem(storageKey)) ?? {};
-  } catch {
-    return {};
-  }
-}
-
-const saved = loadSettings();
-const settings = {
-  theme: ["dark", "light"].includes(saved.theme) ? saved.theme : null,
-  income: isMoney(saved.income) ? saved.income : 520_000,
-  investmentRate: isInvestmentRate(saved.investmentRate) ? saved.investmentRate : MIN_INVESTMENT_BASIS_POINTS,
-  expenses: Object.fromEntries(categories.map(({ id, initial }) => {
-    const value = saved.expenses?.[id];
-    return [id, isMoney(value) ? value : initial];
-  })),
-  projection: {
-    principal: isMoney(saved.projection?.principal) ? saved.projection.principal : 1_000_000,
-    contribution: isMoney(saved.projection?.contribution) ? saved.projection.contribution : 40_000,
-    rate: isAnnualReturn(saved.projection?.rate) ? saved.projection.rate : 7,
-    years: isHorizon(saved.projection?.years) ? saved.projection.years : 20
-  }
-};
-
-function saveSettings() {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(settings));
-  } catch {
-    // The calculators also work when the browser denies local storage.
-  }
-}
-
+// The SDK script is ordered before this module in index.html.
 const sdk = window.Telegram?.WebApp;
-const inTelegram = Boolean(sdk?.initData || (sdk?.platform && sdk.platform !== "unknown"));
+const launchParams = new URLSearchParams(window.location.hash.slice(1));
+const inTelegram = Boolean(sdk?.initData || (sdk?.platform && sdk.platform !== "unknown") || launchParams.has("tgWebAppData") || launchParams.has("tgWebAppPlatform"));
 const telegram = inTelegram ? sdk : null;
+let local;
+try { local = window.localStorage; } catch { /* Storage may be unavailable. */ }
+const store = createSettingsStore({
+  telegram: inTelegram ? telegram ?? {} : null, storage: local,
+  onStatus: message => {
+    if (byId("save-status").textContent !== message) byId("save-status").textContent = message;
+    byId("retry-sync").hidden = store.canEdit || !store.userId || message.startsWith("Loading");
+  },
+  onChange: next => {
+    if (!appReady) return;
+    byId("app-content").inert = !store.canEdit;
+    Object.assign(settings, next);
+    renderTheme();
+    for (const { id, format } of projectionFields) byId(id).value = format(settings.projection[id]);
+    byId("growth-error").hidden = true;
+    byId("growth-details").hidden = false;
+    for (const { id } of projectionFields) setFieldError(byId(id), false);
+    renderProjection();
+    renderMonthlyPlan();
+    selectTab(byId("tab-" + settings.activeTab), false);
+  }
+});
+let appReady = false;
+const user = telegram?.initDataUnsafe?.user;
+byId("profile-name").textContent = store.userId ? [user.first_name, user.last_name].filter(Boolean).join(" ") || "My Telegram profile" : "Personal budget";
+byId("app-content").inert = true;
+telegram?.ready();
+telegram?.expand();
+const settings = await store.load();
+byId("app-content").inert = !store.canEdit;
+byId("retry-sync").addEventListener("click", () => store.flush());
+
+function saveSettings() { store.save(settings); }
+
 const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
 const themeButton = byId("theme-button");
 const metaTheme = document.querySelector('meta[name="theme-color"]');
@@ -104,7 +104,7 @@ systemTheme.addEventListener("change", renderTheme);
 const tablist = document.querySelector('[role="tablist"]');
 const tabs = [...tablist.querySelectorAll('[role="tab"]')];
 
-function selectTab(selected) {
+function selectTab(selected, persist = true) {
   const screen = selected.getAttribute("aria-controls");
   byId("screen-title").textContent = titles[screen];
   for (const tab of tabs) {
@@ -113,6 +113,8 @@ function selectTab(selected) {
     tab.tabIndex = active ? 0 : -1;
     byId(tab.getAttribute("aria-controls")).hidden = !active;
   }
+  settings.activeTab = screen;
+  if (persist) saveSettings();
   window.scrollTo(0, 0);
 }
 
@@ -227,10 +229,10 @@ function renderProjection() {
 
 function renderRows(container, rows) {
   container.innerHTML = rows.map(({ label, color, icon, detail, amount }) => {
-    const subtitle = detail ? "<small>" + detail + "</small>" : "";
+    const subtitle = detail ? "<small>" + escapeHtml(detail) + "</small>" : "";
     return `<li>
       <span class="row-icon" style="--item: var(--${color})"><svg class="icon" aria-hidden="true"><use href="#icon-${icon}"></use></svg></span>
-      <span>${label}${subtitle}</span><strong>${money(amount)}</strong>
+      <span class="account-label">${escapeHtml(label)}${subtitle}</span><strong>${money(amount)}</strong>
     </li>`;
   }).join("");
 }
@@ -300,7 +302,7 @@ function renderSplit(expenses) {
 }
 
 function renderMonthlyPlan() {
-  const rows = categories.map(category => ({ ...category, amount: settings.expenses[category.id] }));
+  const rows = settings.categories.map(category => ({ ...category, amount: settings.expenses[category.id] }));
   const expenses = rows.reduce((total, row) => total + row.amount, 0);
   renderBudget(rows, expenses);
   renderSplit(expenses);
@@ -314,9 +316,35 @@ const editorNote = byId("editor-note");
 const backButton = telegram?.isVersionAtLeast("6.1") ? telegram.BackButton : null;
 let editedFields = [];
 let activeEditor = "";
+let draftCategories = [];
+const addCategoryButton = byId("add-category");
 
 function moneyField(id, label, value) {
   return { id, label, value: moneyInput(value), prefix: "$", parse: parseMoney, error: moneyError(label) };
+}
+
+function fieldMarkup({ id, label, value, prefix, suffix }) {
+  return `<label class="field" for="edit-${id}">${escapeHtml(label)}
+    <span class="field-control">
+      ${prefix ? '<b aria-hidden="true">' + escapeHtml(prefix) + "</b>" : ""}
+      <input id="edit-${id}" name="${id}" aria-label="${escapeHtml(label)}" inputmode="decimal" enterkeyhint="done" autocomplete="off" aria-describedby="editor-error" value="${escapeHtml(value)}">
+      ${suffix ? '<b aria-hidden="true">' + escapeHtml(suffix) + "</b>" : ""}
+    </span>
+  </label>`;
+}
+
+function appendCategoryEditor(category, amount) {
+  const field = moneyField("expense-" + category.id, "Monthly amount", amount);
+  editedFields.push(field);
+  const row = document.createElement("div");
+  row.className = "category-editor-row";
+  row.innerHTML = `<label class="field" for="name-${category.id}">Category name
+    <span class="field-control"><input id="name-${category.id}" name="name-${category.id}"
+      maxlength="${MAX_CATEGORY_NAME}" aria-label="Category name" aria-describedby="editor-error"
+      autocomplete="off" enterkeyhint="next" value="${escapeHtml(category.label)}"></span>
+    </label>${fieldMarkup(field)}`;
+  editorFields.append(row);
+  addCategoryButton.disabled = draftCategories.length >= MAX_CATEGORIES;
 }
 
 function showEditor(kind) {
@@ -328,27 +356,32 @@ function showEditor(kind) {
     " for investing. High-yield savings stays at " + percent.format(SAVINGS_BASIS_POINTS / 10_000) + ".";
   editorError.hidden = true;
   editorError.textContent = "";
+  editorFields.classList.toggle("budget-editor", budget);
+  addCategoryButton.hidden = !budget;
   editedFields = [moneyField("income", budget ? "Take-home pay" : "Monthly take-home pay", settings.income)];
-  if (budget) {
-    editedFields.push(...categories.map(({ id, label }) => moneyField(id, label, settings.expenses[id])));
-  } else {
+  draftCategories = budget ? settings.categories.map(category => ({ ...category })) : [];
+  if (!budget) {
     editedFields.push({
       id: "investment", label: "Stock market contribution", value: String(settings.investmentRate / 100),
       suffix: "%", parse: parseInvestmentRate, error: investmentError
     });
   }
-  editorFields.innerHTML = editedFields.map(({ id, label, value, prefix, suffix }) => `
-    <label class="field" for="edit-${id}">${label}
-      <span class="field-control">
-        ${prefix ? '<b aria-hidden="true">' + prefix + "</b>" : ""}
-        <input id="edit-${id}" name="${id}" aria-label="${label}" inputmode="decimal" autocomplete="off" aria-describedby="editor-error" value="${value}">
-        ${suffix ? '<b aria-hidden="true">' + suffix + "</b>" : ""}
-      </span>
-    </label>
-  `).join("");
+  editorFields.innerHTML = editedFields.map(fieldMarkup).join("");
+  if (budget) for (const category of draftCategories) appendCategoryEditor(category, settings.expenses[category.id]);
   editor.showModal();
   backButton?.show();
 }
+
+addCategoryButton.addEventListener("click", () => {
+  if (draftCategories.length >= MAX_CATEGORIES) return;
+  const category = {
+    id: "category_" + crypto.randomUUID(), label: "",
+    color: CATEGORY_COLORS[draftCategories.length % CATEGORY_COLORS.length], icon: "receipt"
+  };
+  draftCategories.push(category);
+  appendCategoryEditor(category, 0);
+  byId("name-" + category.id).focus();
+});
 
 for (const button of document.querySelectorAll("[data-editor]")) {
   button.addEventListener("click", () => showEditor(button.dataset.editor));
@@ -364,6 +397,12 @@ backButton?.onClick(() => {
 function readEditor() {
   const values = {};
   let firstError = null;
+  for (const category of draftCategories) {
+    const input = byId("name-" + category.id);
+    const invalid = !validCategoryName(input.value);
+    setFieldError(input, invalid);
+    if (invalid && !firstError) firstError = { input, error: "Enter a category name from 1 to " + MAX_CATEGORY_NAME + " characters." };
+  }
   for (const { id, parse, error } of editedFields) {
     const input = byId("edit-" + id);
     values[id] = parse(input.value);
@@ -387,14 +426,31 @@ editorForm.addEventListener("submit", event => {
   }
   settings.income = values.income;
   if (activeEditor === "budget") {
-    for (const { id } of categories) settings.expenses[id] = values[id];
+    settings.categories = draftCategories.map(category => ({ ...category, label: byId("name-" + category.id).value.trim() }));
+    settings.expenses = Object.fromEntries(settings.categories.map(({ id }) => [id, values["expense-" + id]]));
   } else {
     settings.investmentRate = values.investment;
   }
   renderMonthlyPlan();
   saveSettings();
+  document.activeElement?.blur();
   editor.close();
 });
+
+// iOS does not consistently blur text inputs when tapping a non-focusable
+// element. Do it explicitly without cancelling taps, labels, or button actions.
+function dismissKeyboard(event) {
+  if (event.target instanceof Element && event.target.closest("input, textarea, select, label, [contenteditable]:not([contenteditable='false'])")) return;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active.matches("input, textarea, select, [contenteditable]:not([contenteditable='false'])")) active.blur();
+}
+document.addEventListener(window.PointerEvent ? "pointerdown" : "touchstart", dismissKeyboard, { capture: true, passive: true });
+window.addEventListener("online", () => store.flush(true));
+window.addEventListener("pagehide", () => store.flush());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") store.flush(true);
+});
+setInterval(() => store.flush(), 30_000);
 
 if (telegram) {
   root.dataset.telegram = "";
@@ -403,5 +459,5 @@ if (telegram) {
 renderTheme();
 renderProjection();
 renderMonthlyPlan();
-telegram?.ready();
-telegram?.expand();
+selectTab(byId("tab-" + settings.activeTab), false);
+appReady = true;

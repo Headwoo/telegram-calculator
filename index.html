@@ -27,6 +27,12 @@
   </svg>
 
   <header class="browser-header">Balance</header>
+  <div class="profile-bar shell">
+    <span id="profile-name">Personal budget</span>
+    <span id="save-status" role="status" aria-live="polite">Loading…</span>
+    <button type="button" class="pill glass" id="retry-sync" hidden>Retry</button>
+  </div>
+  <div id="app-content" inert>
   <main class="shell">
     <header class="page-heading">
       <h1 id="screen-title">Compound interest</h1>
@@ -124,15 +130,17 @@
       </button>
     </nav>
   </footer>
+  </div>
 
   <dialog id="editor" class="sheet" aria-labelledby="editor-title">
     <form id="editor-form" novalidate>
       <div class="sheet-handle" aria-hidden="true"></div>
       <header class="sheet-heading">
         <h2 id="editor-title"></h2>
-        <button type="submit" class="pill glass">Done</button>
+        <button type="submit" class="pill glass" autofocus>Done</button>
       </header>
       <div class="field-grid" id="editor-fields"></div>
+      <button type="button" class="add-category pill glass" id="add-category" hidden>+ Add category</button>
       <p class="note" id="editor-note" hidden></p>
       <p class="error" id="editor-error" role="alert" hidden></p>
       <button type="button" class="cancel" id="editor-cancel">Cancel</button>
