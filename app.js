@@ -6,6 +6,7 @@ import {
 } from "./finance.mjs";
 import { CATEGORY_COLORS, MAX_CATEGORIES, MAX_CATEGORY_NAME, validCategoryName } from "./settings.mjs";
 import { createSettingsStore } from "./storage.mjs";
+import { createLiquidTabs } from "./liquid-tabs.mjs";
 
 const root = document.documentElement;
 const byId = id => document.getElementById(id);
@@ -103,8 +104,11 @@ systemTheme.addEventListener("change", renderTheme);
 
 const tablist = document.querySelector('[role="tablist"]');
 const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+const liquidTabs = createLiquidTabs(tablist, { onSelect: tab => selectTab(tab) });
 
 function selectTab(selected, persist = true) {
+  const previous = tabs.findIndex(tab => tab.getAttribute("aria-selected") === "true");
+  const next = tabs.indexOf(selected);
   const screen = selected.getAttribute("aria-controls");
   byId("screen-title").textContent = titles[screen];
   for (const tab of tabs) {
@@ -113,14 +117,20 @@ function selectTab(selected, persist = true) {
     tab.tabIndex = active ? 0 : -1;
     byId(tab.getAttribute("aria-controls")).hidden = !active;
   }
+  liquidTabs.select(selected, { instant: !persist });
+  if (persist && previous !== next && !liquidTabs.reducedMotion) {
+    const panel = byId(screen);
+    for (const animation of panel.getAnimations()) animation.cancel();
+    panel.animate([
+      { opacity: .35, transform: `translateX(${next > previous ? 12 : -12}px) scale(.992)` },
+      { opacity: 1, transform: "translateX(0) scale(1)" }
+    ], { duration: 260, easing: "cubic-bezier(.2,.7,.2,1)" });
+  }
   settings.activeTab = screen;
   if (persist) saveSettings();
   window.scrollTo(0, 0);
 }
 
-for (const tab of tabs) {
-  tab.addEventListener("click", () => selectTab(tab));
-}
 tablist.addEventListener("keydown", event => {
   const index = tabs.indexOf(event.target);
   if (index < 0) return;

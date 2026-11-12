@@ -24,6 +24,14 @@
   --glass-side: rgba(147, 158, 200, .4);
   --glass-shadow: rgba(40, 52, 104, .22);
   --selection: rgba(144, 158, 254, .22);
+  --tab-glass: rgba(237, 243, 255, .54);
+  --tab-rim: rgba(255, 255, 255, .83);
+  --tab-shine: rgba(255, 255, 255, .7);
+  --tab-shadow: rgba(45, 61, 116, .22);
+  --lens-tint: rgba(255, 255, 255, .43);
+  --lens-rim: rgba(255, 255, 255, .95);
+  --lens-edge: rgba(112, 144, 218, .22);
+  --lens-shadow: rgba(66, 89, 154, .19);
   --halo-a: rgba(182, 196, 255, .80);
   --halo-b: rgba(228, 194, 245, .60);
   --halo-c: rgba(191, 221, 255, .82);
@@ -66,6 +74,14 @@
   --glass-side: rgba(192, 199, 244, .23);
   --glass-shadow: rgba(0, 0, 0, .52);
   --selection: rgba(134, 149, 250, .29);
+  --tab-glass: rgba(28, 35, 57, .6);
+  --tab-rim: rgba(218, 231, 255, .24);
+  --tab-shine: rgba(204, 222, 255, .22);
+  --tab-shadow: rgba(0, 0, 0, .46);
+  --lens-tint: rgba(178, 200, 255, .19);
+  --lens-rim: rgba(231, 240, 255, .65);
+  --lens-edge: rgba(133, 167, 242, .24);
+  --lens-shadow: rgba(0, 0, 0, .24);
   --halo-a: rgba(58, 69, 152, .55);
   --halo-b: rgba(103, 55, 125, .38);
   --halo-c: rgba(40, 72, 143, .48);
@@ -340,36 +356,121 @@ h1, h2, p { margin: 0; }
   pointer-events: none;
 }
 .tabs {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3px;
   max-width: 374px;
-  padding: 4px;
+  padding: 5px;
   margin: 0 auto;
   border-radius: 999px;
+  border: 1px solid var(--tab-rim);
+  background:
+    radial-gradient(130px 80px at var(--glass-light-x, 38%) 0%, var(--tab-shine), transparent 85%),
+    linear-gradient(150deg, rgba(255, 255, 255, .14), transparent 48%),
+    var(--tab-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(175%);
+  backdrop-filter: blur(24px) saturate(175%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .38),
+    inset 0 -1px 0 var(--lens-edge),
+    0 12px 32px -9px var(--tab-shadow),
+    0 2px 6px -2px var(--tab-shadow);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: pan-y;
   pointer-events: auto;
 }
+.tabs::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(165deg, rgba(255, 255, 255, .23), transparent 24% 78%, var(--lens-edge));
+  pointer-events: none;
+}
+.tab-lens {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  border: 1px solid var(--lens-rim);
+  border-bottom-color: var(--lens-edge);
+  border-radius: 999px;
+  background:
+    radial-gradient(90% 130% at var(--lens-light-x, 32%) -12%, var(--tab-shine), transparent 72%),
+    linear-gradient(150deg, rgba(255, 255, 255, .2), transparent 48% 65%, var(--lens-edge)),
+    var(--lens-tint);
+  -webkit-backdrop-filter: blur(9px) saturate(180%) brightness(1.08);
+  backdrop-filter: blur(9px) saturate(180%) brightness(1.08);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, .48),
+    inset 1px 0 2px var(--lens-rim),
+    inset -1px 0 2px var(--lens-edge),
+    inset 0 -2px 5px var(--lens-edge),
+    0 3px 10px -3px var(--lens-shadow),
+    0 0 10px rgba(158, 191, 255, .1);
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform;
+}
+.tabs:not([data-liquid-ready]) .tab-lens { visibility: hidden; }
+.tabs:not([data-liquid-ready]) button[aria-selected="true"] { background: var(--lens-tint); }
+.tab-lens-shine {
+  position: absolute;
+  inset: 1px;
+  overflow: hidden;
+  border-radius: inherit;
+  background:
+    radial-gradient(70% 32% at var(--lens-light-x, 35%) 0%, rgba(255, 255, 255, .56), transparent),
+    radial-gradient(80% 36% at 72% 112%, rgba(214, 234, 255, .34), transparent);
+  opacity: calc(.65 + var(--lens-pressure, 0) * .25);
+}
 .tabs button {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  min-height: 50px;
+  min-height: 56px;
   padding: 4px 0;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 999px;
   background: none;
   color: var(--secondary);
   font-size: .73rem;
   font-weight: 620;
+  transition: color 160ms ease;
+}
+.tabs button .icon {
+  width: 21px;
+  height: 21px;
+  transition: transform 240ms cubic-bezier(.2,.8,.2,1);
 }
 .tabs button[aria-selected="true"] {
-  border-color: var(--glass-side);
-  border-top-color: var(--glass-top);
-  background: linear-gradient(160deg, var(--glass-top), transparent 120%), var(--selection);
-  box-shadow: inset 0 1px 1px var(--glass-top), 0 1px 4px -2px var(--glass-shadow);
   color: var(--accent);
+}
+.tabs button[aria-selected="true"] .icon { transform: translateY(-1px) scale(1.1); }
+.tabs[data-interacting] button { color: var(--secondary); }
+.tabs[data-interacting] button .icon { transform: none; }
+.tabs[data-interacting] button[data-preview] { color: var(--accent); }
+.tabs[data-interacting] button[data-preview] .icon { transform: translateY(-1px) scale(1.15); }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tabs { background: var(--surface); }
+  .tab-lens { background: var(--selection); }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .tabs { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .tab-lens { background: var(--selection); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (forced-colors: active) {
+  .tabs { background: Canvas; border-color: ButtonText; }
+  .tab-lens { display: none; }
+  .tab-lens-shine, .tabs::after { display: none; }
+  .tabs button[aria-selected="true"], .tabs[data-interacting] button[data-preview] { background: Highlight; color: HighlightText; }
 }
 
 .sheet {
@@ -428,5 +529,6 @@ body:has(.sheet[open]) { overflow: hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
   .theme-button, .pill { transition: none; }
+  .tabs button, .tabs button .icon { transition: none; }
   .sheet[open] { animation: none; }
 }

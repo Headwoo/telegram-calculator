@@ -22,6 +22,8 @@ Existing `balance.settings.v1` browser data is migrated once into the first prof
 
 Tapping outside an input dismisses the keyboard, including inside the budget editor. Tapping an input or its label still focuses it normally.
 
+The bottom tabs share a Liquid Glass lens with a translucent surface, moving highlights, and an elastic transition. Tap a tab or drag across the bar and release to select it. A cancelled drag keeps the current calculator. Keyboard navigation still uses the arrow keys, Home, and End. Reduced motion disables the spring and screen animation; increased contrast and reduced transparency use an opaque surface.
+
 ## Preview locally
 
 From this folder, start a static server with Python 3.
