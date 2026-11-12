@@ -17,13 +17,3 @@ python -m http.server 8000 --bind 127.0.0.1
 ```
 
 Open [localhost:8000](http://127.0.0.1:8000/) in a browser.
-
-## Launch from Telegram
-
-1. Publish `index.html`, `styles.css`, `app.js` and `finance.mjs` together on a static HTTPS host. The host should serve both JavaScript files with a JavaScript MIME type. Open the public HTTPS URL in a browser and check that the calculator loads.
-2. Create a bot using `/newbot` in [@BotFather](https://t.me/BotFather). Open your bot under `/mybots`, go to **Bot Settings → Configure Mini App**, and enable the main Mini App with your public HTTPS URL.
-3. Open the bot’s profile in Telegram and tap its app launch button. To add a launcher inside the bot chat, use `/setmenubutton` in BotFather with the same URL.
-
-The static app requires no bot token or backend. Telegram controls the native header and safe areas.
-
-[Telegram Mini Apps documentation](https://core.telegram.org/bots/webapps#launching-the-main-mini-app)
